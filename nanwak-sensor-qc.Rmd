@@ -1,0 +1,136 @@
+---
+title: "Lull Creek QAQC"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, echo = FALSE)
+# Explanation of code
+## Action required
+
+#Install and/or load packages
+#install.packages('ggplot2')
+#install.packages('plotly')
+#install.packages('tidyverse')
+
+library(ggplot2)
+library(plotly)
+library(tidyverse)
+library(knitr)
+library(lubridate)
+
+## Set working directory
+opts_knit$set(root.dir = "~/git-repos/wx-tools/data_output/")
+```
+
+
+```{r load rain data, include=FALSE}
+
+# Load data - read headers
+fileheaders <- read.csv("2023-10-04.5minuteSamples_lullftqc.csv",
+                        nrows = 1, as.is = TRUE,
+                        header = FALSE)
+# Read in data, drop redundant header rows
+df <- read.csv("2023-10-04.5minuteSamples_lullftqc.csv",
+                 header = FALSE,
+                 skip = 4,
+                 stringsAsFactors = FALSE)
+
+# Add headers to dataframe
+colnames(df) <- fileheaders
+names(df)
+glimpse(df)
+
+colnames(df)[1] <- "Date"
+df$Date<-as.POSIXct(df$Date,format="%Y-%m-%d %H:%M")
+
+#check structure
+str(df)
+```
+
+
+```{r qc_flagging, include = FALSE}
+
+data_flagged<-df %>% 
+    mutate(temp_diff = lead(TWtrLULL1PT_Avg)-lag(TWtrLULL1PT_Avg),
+           depth_diff= lead(DepthLULL1PT_Avg)-lag(DepthLULL1PT_Avg),
+           qc_flag = case_when(is.na(DepthLULL1PT_Avg) ~ "MV: QC'd by EH"
+                               ,TWtrLULL1PT_Avg >= 25 ~ "SVC: Max temp: QC'd by EH"
+                               ,TWtrLULL1PT_Avg < 0 ~ "SVC: Min temp: QC'd by EH"
+                               ,temp_diff > 1 ~ "SVC: Rate of change exceedance Temperature: QC'd by EH"
+                               ,depth_diff > 1 ~ "SVC: Rate of change exceedance: QC'd by EH"
+                               ,DepthLULL1PT_Avg < 0.03 ~  "SVC: Dewatering potential: QC'd by EH"
+                               ,TRUE ~ "AV: QC'd by EH"))
+       
+
+
+data_SVC <- data_flagged %>% 
+  filter(qc_flag == 'SVC')
+data_MV <- data_flagged %>% 
+  filter(qc_flag == 'MV')
+data_AV <- data_flagged %>% 
+  filter(qc_flag == 'AV')
+```
+
+## Overview
+
+Two Onset Hobo U20L-04 pressure transducers (one measuring water pressure and one measuring air pressure) were installed 2018-08-23 to support the collection of baseline data for stream conditions. The sensors log on 10 minute intervals and are downloaded approximately 1 to 2 times per year. This dataset reflects the current time series and contains  `r nrow(data)` measurements of which `r nrow(data_SVC)` are flagged as suspicious (SVC), while `r nrow(data_AV)` are flagged as accepted (AV). Data is also stored and available for viewing on the Hakai sensor network.
+
+`r paste("First created on 2023-04-27. Updated on", Sys.Date())`
+
+## Site Metadata 
+
+* 2019-04 installation removed due to extensive sediment buildup 
+* 2019-09-30 installation re-installed by Hakai
+* 2020 landslide at some point, telsepar knocked upwards and boulder it was mounted to was dislodged 
+* 2020-02-27 last record of data until re-installed by Mamalilikulla 2020-06-08 
+* 2020-08-22 download, sensor elevation change 
+* 2020-10-16 download, sensor elevation change 
+* 2021-08-11 download, sensor elevation change 
+* 2021-09-29 Lull PT adjustments
+* 2022-04-20 download
+* 2022-08-02 download, sensor elevation change
+* 2023-01-01 sensor memory full
+* 2023-03-07 download 
+
+
+##### Water Level
+```{r plot-watlev, include=TRUE}
+
+plot_ly(data_flagged, x = ~Date, y = ~DepthLULL1PT_Avg, 
+        type = 'scatter', 
+        mode = 'lines',
+        text = ~flag,
+        hovertemplate = paste('%{x}',
+                        '%{text}', 
+                        '%{y}',
+                        '<extra></extra>'))%>%
+  layout(title = " ", #barmode = 'stack',
+         xaxis = list(title = "Date"),
+         yaxis = list(side="left", title = 'Water Level [m]'))
+
+         
+
+```
+
+##### Water Temperature
+```{r plot-temp, include=TRUE}
+
+plot_ly(data_flagged, x = ~Date, y = ~TWtrLULL1PT_Avg, 
+               type = 'scatter', mode = 'lines', name = '', text = ~flag,
+        hovertemplate = paste('%{x}',
+                        '%{text}', 
+                        '%{y}',
+                        '<extra></extra>')) %>%
+  layout(title = " ", #barmode = 'stack',
+         xaxis = list(title = "Date"),
+         yaxis = list(side="left", title = 'Water Temperature [degC]'))
+
+```
+
+
+
+

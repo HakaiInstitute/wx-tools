@@ -1,0 +1,87 @@
+---
+title: "Southgate Turbidity QAQC"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, echo = FALSE)
+# Explanation of code
+## Action required
+
+#Install and/or load packages
+#install.packages('ggplot2')
+#install.packages('plotly')
+#install.packages('tidyverse')
+
+library(ggplot2)
+library(plotly)
+library(tidyverse)
+library(knitr)
+
+## Set working directory
+setwd("~/git-repos/wx-tools/data_input")
+
+```
+
+
+```{r load data, include=FALSE}
+data <- read_csv("df_60.csv", 
+               col_types = cols(Date = col_datetime(format = "%Y-%m-%d %H:%M")))
+```
+
+
+```{r qc_flagging, include = FALSE}
+
+
+data_flagged<-data %>% 
+  mutate(flag = if_else(`WSC-watlev-m`<9|`SGTEDS-NTU-Avg` < 0, "SVC", "AV"),
+         flag = if_else(`WSC-watlev-m`<9|`SGTEUS-NTU-Avg`<0, "SVC", "AV"))
+
+data_SVC <- data_flagged %>% 
+  filter(flag == 'SVC')
+data_AV <- data_flagged %>% 
+  filter(flag == 'AV')
+```
+
+## Southgate Sensors
+
+Info about project and sensor installs as well as any major movements. This data set contains  `r nrow(data)` measurements of which `r nrow(data_SVC)` are flagged as suspicious, while `r nrow(data_AV)` are flagged as accepted. 
+
+`r paste("First created on 2023-03-10. Updated on", Sys.Date())`
+
+#### Zoom plots {.tabset}
+
+##### Water Level
+```{r plot-watlev, include=TRUE}
+
+plot_ly(data, x = ~Date, y = ~`WSC-watlev-m`, 
+               type = 'scatter', mode = 'lines', name = 'WSC-watlev-m') %>%
+  add_trace(x = ~Date, y = ~`DFO-sensor-depth-m`, 
+            type = 'scatter', mode = 'lines', name = 'DFO-sensor-depth-m', 
+            yaxis = 'y') %>%
+    layout(title = " ", #barmode = 'stack',
+         xaxis = list(title = "Date"),
+         yaxis = list(side="left", title = ' '))
+ yaxis2 = list(side = 'right', overlaying = "y", title = 'Water Level (m)',
+ showgrid = FALSE, zeroline = FALSE)
+
+```
+
+##### Turbidity
+```{r plot-turb, include=TRUE}
+
+plot_ly(data, x = ~Date, y = ~`SGTEDS-NTU-Avg`, 
+               type = 'scatter', mode = 'lines', name = 'SGTEDS-NTU-Avg') %>%
+    add_trace(x = ~Date, y = ~`DFO-NTU`, 
+            type = 'scatter', mode = 'lines', name = 'DFO-NTU', 
+            yaxis = 'y') %>%
+  add_trace(x = ~Date, y = ~`SGTEUS-NTU-Avg`, 
+            type = 'scatter', mode = 'lines', name = 'SGTEUS-NTU-Avg',
+            yaxis = 'y') %>% 
+  layout(title = " ", #barmode = 'stack',
+         xaxis = list(title = "Date"),
+         yaxis = list(side="left", title = ' '))
+
+```
+
