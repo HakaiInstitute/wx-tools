@@ -5,45 +5,45 @@ library(dplyr)
 library(zoo)
 library(ggplot2)
 library(lubridate)
+library(glue)
+library(stringr)
 
-baseurl = "https://goose.hakai.org/api"
+create_qc_table_name <- function(table_name) {
+  table_name <- tolower(table_name)
+  gsub("us:", "_", table_name)
+}
 
-
+qc_author <- 'emily.haughton@hakai.org'
+baseurl <- "https://goose.hakai.org/api"
+station_name <- "SSN819US"
+sampling_interval <- "5minute"
+table_name <- glue("{station_name}:{sampling_interval}")
+qc_table_name <- create_qc_table_name(table_name)
+meas_start_date <- "2016-04-01"
+meas_end_date <- "2016-04-04"
 
 # Initialize the client
-setwd("~")
 hakai_client <- hakaiApi::Client$new(baseurl)
 
 # Step 1: Load the data
-## specify your types via a readr col_spec
-cols_type_spec <- cols(
-  .default = col_double(),
-  measurementTime = col_datetime(format = ""),
-  `SSN819US:PLS2_Lvl_QC` = col_character(),
-  `SSN819US:PLS2_Temp_QC` = col_character(),
-  `SSN819US:PLS_DischargeRate_QC` = col_character(),
-  `SSN819US:DischargeRate_QC` = col_character(),
-  `SSN819US:DischargeVolume_QC` = col_character(),
-  `SSN819US:Turbidity_QC` = col_character(),
-  `SSN819US:TurbidityNTU_QC` = col_character()
-)
+## contruct the url
+url <- glue("{baseurl}/sn/views/{table_name}Samples?measurementTime>={meas_start_date}&measurementTime<{meas_end_date}&limit=-1")
+df_raw <- hakai_client$get(url)
 
-url <- "https://goose.hakai.org/api/sn/views/SSN819US:5minuteSamples?measurementTime>=2016-04-01&measurementTime<2016-04-28"
+## set types explicitly
+df <- df_raw |> 
+  mutate(across(ends_with("_QC"), as.character)) |> 
+  mutate(across(!ends_with("_QC") & !any_of("measurementTime"), as.double)) |> 
+  mutate(measurementTime = as_datetime(measurementTime))
 
-# Get the table name from api url for later use
-tableName <- tolower(gsub("(outlet|trib)", "_\\1", url, ignore.case = TRUE)) %>%
-  gsub(".*/", "", .) %>%
-  gsub("samples.*$", "", .) %>%
-  gsub(":", "_", .)
-
-df <- hakai_client$get(url, col_types = cols_type_spec)
-
+## generic column renaming
 df <- df %>%
-  rename(
-    stage = "SSN819US:PLS2_Lvl",
-    qlevel = "SSN819US:PLS2_Lvl_QL",
-    qflag = "SSN819US:PLS2_Lvl_QC"
-  )
+  rename_with(~ case_when(
+    str_ends(.x, ":PLS2_Lvl$") ~ "stage",
+    str_ends(.x, ":PLS2_Lvl_QL$") ~ "qlevel", 
+    str_ends(.x, ":PLS2_Lvl_QC$") ~ "qflag",
+    TRUE ~ .x
+  ))
 
 # Step 2: Apply linear interpolation for small gaps (<12)
 df <- df %>%
@@ -198,12 +198,13 @@ output_df <- output_df %>%
   )
 
 output_df['measurement_name'] <- 'PLS_Lvl'
-output_df['qc_by'] <- 'emily.haughton@hakai.org'
+output_df['qc_by'] <- qc_author
 output_df['recorded_time'] <- strftime(lubridate::now() , "%Y-%m-%dT%H:%M:%S%z")
 output_df$measurement_time <- strftime(output_df$measurement_time, "%Y-%m-%dT%H:%M:%S%z")
 
+
 # Send QC data back to the database (1000 rows at a time)
-QCURL = paste0(baseurl, "/sn/qc/", tableName)
+QCURL = paste0(baseurl, "/sn/qc/", qc_table_name)
 cat('Sending PATCH requests to:', QCURL)
 window_size <- 1000
 for (i in 0:(nrow(output_df) %/% window_size)) {
