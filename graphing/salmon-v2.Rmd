@@ -1,0 +1,440 @@
+---
+title: "QC Report: Salmon Watershed 2024-11-19"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, echo = FALSE, Cache = TRUE)
+#Packages for the task
+library(plotly)
+library(tidyverse)
+library(knitr)
+library(lubridate)
+library(htmltools)
+library(leaflet)
+library(readr)
+library(sf)
+library(tidyhydat)
+library(kableExtra)
+
+```
+
+
+
+```{r qc_map, include = FALSE}
+watershed_data <- read_csv("../working-directory/supplementary-files/salm_trib_coords.csv")
+watershed_sf <- st_as_sf(watershed_data, coords = c("longitude", "latitude"), crs = 4326)
+
+```
+
+
+```{r qc_map2, include = TRUE}
+leaflet(watershed_sf) %>%
+  addProviderTiles(providers$Esri.WorldImagery) %>%
+  addMarkers(label = ~watershed, popup = ~watershed) %>%
+  setView(lng = mean(st_coordinates(watershed_sf)[, 1]),
+          lat = mean(st_coordinates(watershed_sf)[, 2]),
+          zoom = 10)
+```
+
+## Tidbit network 
+`r paste("First created on 2024-10-28. Updated on", Sys.Date())`
+
+This dataset includes time series data for `r length(unique(list.files()))` stations, which consists of two Primary Watersheds and additional stations in Small Forested Catchments, all located within the Salmon River Watershed. The data covers the period from June 12, 2024, to August 28, 2024, and all sites have passed preliminary quality control (QC) checks. These checks focus on identifying temperature data that fall outside of expected ranges or show unusual changes over a 24-hour period. Specifically, the QC flags temperatures above 40°C ("Fail: 40 degC") as unusually high and potentially erroneous, and temperatures below -1°C ("Fail: -1 degC") as unexpectedly low. The checks also assess temperature changes over a 24-hour period, flagging any change greater than 5.2°C ("Fail: 24hr change") based on the typical fluctuation observed at the sites. A significant change could suggest an abnormal temperature fluctuation, possibly due to dewatering. QC flagging code and conventions are updated on an ongoing basis as more data comes available. 
+
+## Photo Gallery {.tabset}
+
+
+### SALM_TRIB1
+<img src="https://drive.google.com/uc?export=view&id=1mZCIMhLBZF_jXWyQHppkHi5oQe4x-YR8" alt="Photo 1" style="width:50%;">
+
+### SALM_TRIB2
+<img src="https://drive.google.com/uc?export=view&id=1qOiTQQsrpROBrQdPs-mW5EwrQ5sMAsXA" alt="Photo 2" style="width:50%;">
+
+### SALM_TRIB3
+<img src="https://drive.google.com/uc?export=view&id=1jNrh2Yl3yx83UGobHnT_1dn4ysXtLIs7" alt="Photo 3" style="width:50%;">
+
+### SALM_TRIB4
+<img src="https://drive.google.com/uc?export=view&id=1cwOJjDUHvNRpjeYnPVAJT7PajuzTy_WP" alt="Photo 3" style="width:50%;">
+
+
+
+`r paste("First created on 2024-10-28. Updated on", Sys.Date())`
+
+
+```{r wsc-wrangle, include=FALSE}
+# Ensure the timestamp is in POSIXct format
+# Define start timestamp
+start_timestamp <- as.POSIXct("2024-05-03 11:00:00", tz = "UTC")
+
+# Fetch the real-time data (assuming this function works)
+nc50_wsc <- realtime_ws(
+  station_number = c("08HD006","08HD007"),
+  parameters = c(46, 5),  # Water temperature (TW - 5), Water level (HGH - 46)
+  start_date = start_timestamp,
+  end_date = Sys.Date()
+)
+
+
+nc50_wsc$Date <- as.POSIXct(nc50_wsc$Date, tz = "UTC")
+
+# Mapping station IDs to titles
+station_titles <- list(
+  "08HD007" = "Salmon above Memekay",
+  "08HD006" = "Salmon near Sayward"
+)
+
+# Filter data for Water Temperature (Parameter 5)
+parameter_5_data <- nc50_wsc %>%
+  filter(Parameter == "5")  # Water Temperature data (°C)
+
+# Filter data for Water Level (Parameter 46)
+parameter_46_data <- nc50_wsc %>%
+  filter(Parameter == "46")  # Water Level data (m)
+
+
+```
+
+## External Station Data {.tabset}
+### WSC Salmon River near Sayward
+```{r wsc-plot-waterlevel, include=TRUE}
+# Filter data for Water Level (Parameter 46) for "08HD006"
+level_46_08HD006 <- parameter_46_data %>%
+  filter(STATION_NUMBER == "08HD006")
+
+# Create a plotly plot for Water Level (m) without ggplot
+level_46_08HD006_plotly <- plot_ly(
+  data = level_46_08HD006,
+  x = ~Date, 
+  y = ~Value,
+  type = 'scatter', 
+  mode = 'lines',
+  line = list(color = 'blue'),
+  name = "Water Level (m)"
+) %>%
+  layout(
+    title = paste("WSC Water Level Station - Salmon near Sayward", unique(level_46_08HD006$STATION_NUMBER)),
+    xaxis = list(title = "Timestamp"),
+    yaxis = list(title = "Water Level (m)"),
+    template = 'plotly_dark'  # You can adjust the template to your preference
+  )
+
+# Display the interactive plot
+level_46_08HD006_plotly
+
+```
+
+### WSC Salmon River above Memekay
+```{r wsc-plot-waterlevel2, include=TRUE}
+# Filter data for Water Level (Parameter 46) for "08HD006"
+level_46_08HD007 <- parameter_46_data %>%
+  filter(STATION_NUMBER == "08HD007")
+
+# Create a plotly plot for Water Level (m) without ggplot
+level_46_08HD007_plotly <- plot_ly(
+  data = level_46_08HD007,
+  x = ~Date, 
+  y = ~Value,
+  type = 'scatter', 
+  mode = 'lines',
+  line = list(color = 'blue'),
+  name = "Water Level (m)"
+) %>%
+  layout(
+    title = paste("WSC Water Level Station - Salmon above Memekay", unique(level_46_08HD007$STATION_NUMBER)),
+    xaxis = list(title = "Timestamp"),
+    yaxis = list(title = "Water Level (m)"),
+    template = 'plotly_dark'  # You can adjust the template to your preference
+  )
+
+# Display the interactive plot
+level_46_08HD007_plotly
+```
+
+### WSC Salmon near Sayward - TW 
+```{r wsc-plot-watertemp, include=TRUE}
+# Filter data for Water Level (Parameter 5) for "08HD006"
+level_5_08HD006 <- parameter_5_data %>%
+  filter(STATION_NUMBER == "08HD006")
+
+# Create a plotly plot for Water Level (m) without ggplot
+level_5_08HD006_plotly <- plot_ly(
+  data = level_5_08HD006,
+  x = ~Date, 
+  y = ~Value,
+  type = 'scatter', 
+  mode = 'lines',
+  line = list(color = 'red'),
+  name = "Water Temperature (°C)"
+) %>%
+  layout(
+    title = paste("WSC Water Temperature Station - Salmon near Sayward", unique(level_46_08HD007$STATION_NUMBER)),
+    xaxis = list(title = "Timestamp"),
+    yaxis = list(title = "Water Temperature (°C)"),
+    template = 'plotly_dark'  # You can adjust the template to your preference
+  )
+
+# Display the interactive plot
+level_5_08HD006_plotly
+```
+
+
+```{r salm-wx-wrangle, include=FALSE}
+library(dplyr)
+library(plotly)
+
+
+library(readr)
+library(plotly)
+
+df <- read_csv("../data/external-wx/pcds_data/FLNRO-WMB/FLNRO_WMB_Menzies.csv", 
+               col_types = cols(timestamp = col_datetime(format = "%Y-%m-%d %H:%M:%S")))
+```
+
+## NC50 Salmon Weather Station {.tabset}
+### Air temperature
+```{r salm-wx-temp, include=TRUE}
+
+# Plot for air temperature
+air_temp_plot <- plot_ly(df, x = ~timestamp, y = ~air_temp, type = 'scatter', mode = 'lines', 
+                         line = list(color = 'brown'), name = "Air Temperature (°C)") %>%
+  layout(xaxis = list(title = 'Timestamp'),
+         yaxis = list(title = 'Air Temperature (°C)'))
+air_temp_plot
+
+```
+
+### Rainfall
+```{r salm-wx-precip, include=TRUE}
+# Plot for precipitation
+rain_plot <- plot_ly(df, x = ~timestamp, y = ~precipitation, type = 'scatter', mode = 'lines', 
+                     line = list(color = 'green'), name = "Precipitation (mm)") %>%
+  layout(xaxis = list(title = 'Timestamp'),
+         yaxis = list(title = 'Precipitation (mm)'))
+
+rain_plot
+```
+
+
+```{r salm-wrangle, include=FALSE}
+# Load necessary data
+data <- read_csv("../data/salmon-data.csv")
+filtered_df <- read_csv("../data/model_filtered.csv")
+
+# Date conversion for both dataframes
+data <- data %>% mutate(timestamp = as.POSIXct(timestamp, format = "%Y-%m-%d %H:%M", tz = "UTC"))
+filtered_df <- filtered_df %>% mutate(mwat.date = as.POSIXct(mwat.date, format = "%Y-%m-%d %H:%M", tz = "UTC"))
+# Convert the data to long format
+data_long <- data %>%
+  pivot_longer(
+    cols = starts_with("salm"),  # Select columns that contain station names
+    names_to = "Site",           # New column for station names
+    values_to = "Temperature"     # New column for temperature values
+  ) %>%
+  mutate(Site = str_to_lower(Site))  # Ensure consistent lowercase formatting for matching
+
+# Display structure to verify conversion
+str(data_long)
+# Define custom color values for stations (same as before)
+station_colors <- c(
+  "salm_trib9_t1" = "#1f77b4",  
+  "salm_trib8_t1" = "#2ca02c",  
+  "salm_trib7_t1" = "#d62728",  
+  "salm_trib6_t1" = "#ff7f0e",  
+  "salm_trib5_t1" = "#9467bd",  
+  "salm_trib4_t1" = "#e377c2",  
+  "salm_trib3_t1" = "#8c564b",  
+  "salm_trib2_t1" = "#7f7f7f",  
+  "salm_trib20bt1" = "#bcbd22", 
+  "salm_trib1_t1" = "#17becf",  
+  "salm_trib19_t1" = "#f0e3f0", 
+  "salm_trib17_t1" = "#98df8a", 
+  "salm_trib14_t2" = "#c5b0d5", 
+  "salm_trib11_t1" = "#ff9896", 
+  "salm_trib10_t1" = "#9467bd",  
+  "salm_outlet1_t2" = "#c7c7c7",
+  "SALM_TRIB10_T1" = "#bcbd22", 
+  "SALM_TRIB11_T1" = "#d62728", 
+  "SALM_TRIB19_T1" = "#ff7f0e", 
+  "SALM_TRIB6_T1" = "#2ca02c", 
+  "SALM_TRIB17_T1" = "#9467bd", 
+  "SALM_TRIB7_T1" = "#8c564b",  
+  "SALM_TRIB8_T1" = "#e377c2",  
+  "SALM_TRIB9_T1" = "#1f77b4"
+)
+
+# Define custom legend labels for stations (same as before)
+custom_legend_labels <- c(
+  "salm_trib9_t1" = "Salmon Trib 9", 
+  "salm_trib8_t1" = "Salmon Trib 8", 
+  "salm_trib7_t1" = "Salmon Trib 7", 
+  "salm_trib6_t1" = "Salmon Trib 6", 
+  "salm_trib5_t1" = "Salmon Trib 5", 
+  "salm_trib4_t1" = "Salmon Trib 4", 
+  "salm_trib3_t1" = "Salmon Trib 3", 
+  "salm_trib2_t1" = "Salmon Trib 2", 
+  "salm_trib20bt1" = "Salmon Trib 20b", 
+  "salm_trib1_t1" = "Salmon Trib 1", 
+  "salm_trib19_t1" = "Salmon Trib 19", 
+  "salm_trib17_t1" = "Salmon Trib 17", 
+  "salm_trib14_t2" = "Salmon Trib 14", 
+  "salm_trib11_t1" = "Salmon Trib 11", 
+  "salm_trib10_t1" = "Salmon Trib 10", 
+  "salm_outlet1_t2" = "Salmon Outlet 1")
+
+# Convert both the `station` column and `custom_legend_labels` to lowercase
+filtered_df$station <- str_to_lower(filtered_df$station)
+station_colors <- setNames(station_colors, str_to_lower(names(station_colors)))
+custom_legend_labels <- setNames(custom_legend_labels, str_to_lower(names(custom_legend_labels)))
+
+
+# Plot the main data as line plot
+ggplot_fig <- ggplot(data_long, aes(x = timestamp, y = Temperature, color = Site)) +
+  geom_line() +
+  labs(
+    title = "NC50 Salmon Watershed TW and MWAT Date",
+    x = "Date",
+    y = "Temperature (°C)"
+  ) +
+  theme_minimal()
+
+# Add the additional points as colored dots with black outline
+ggplot_fig <- ggplot_fig +
+  geom_point(data = filtered_df, aes(x = mwat.date, y = mwat, color = station), 
+             size = 3, shape = 21, stroke = 1, fill = "black") +  # Fill is white, outline is colored by color
+  scale_color_manual(values = station_colors, labels = custom_legend_labels) +  # Apply custom colors and labels
+  scale_fill_manual(values = station_colors) +  # Fill the interior of the points with the same color
+  guides(color = guide_legend(title = "Station", labels = custom_legend_labels), 
+         fill = "none")  # Remove fill from legend
+
+# Convert to interactive plotly plot
+interactive_plot_mwat <- ggplotly(ggplot_fig)
+
+```
+
+## Salmon River Temperature
+
+```{r salm-plot, include=TRUE}
+
+# Show the interactive plot
+interactive_plot_mwat
+
+```
+
+
+```{r qc_count, include = FALSE}
+
+generate_summary_table <- function(data) {
+  qc_columns <- grep("_qc$", names(data), value = TRUE)
+  
+  # Using map_dfr to return a data frame directly (reduces use of rbind)
+  summary_table <- map_dfr(qc_columns, function(qc_col) {
+    site_name <- gsub("_qc$", "", qc_col)
+    data.frame(
+      Site = site_name,
+      TotalRecords = nrow(data),
+      AV_Flags = sum(data[[qc_col]] == "AV: Pass", na.rm = TRUE),
+      NonAV_NA_Flags = sum(is.na(data[[qc_col]]) | (data[[qc_col]] != "AV: Pass"), na.rm = TRUE)
+    )
+  })
+  
+  return(summary_table)
+}
+
+summary_table <- generate_summary_table(df)
+print(summary_table)
+
+
+```
+
+
+
+```{r summary_stats, include=FALSE}
+calculate_monthly_summary <- function(data) {
+  # Convert timestamp column efficiently
+  data <- data %>%
+    mutate(timestamp = as.POSIXct(timestamp, format = "%Y-%m-%d %H:%M", tz = "UTC")) %>%
+    filter(!is.na(timestamp))
+  
+  # Select only numeric columns that match temperature patterns
+  temp_cols <- grep("^salm_.*_t\\d+$", names(data), value = TRUE)
+  
+  # Reshape data and calculate statistics using dplyr's summarise()
+  data_long <- data %>%
+    select(timestamp, all_of(temp_cols)) %>%
+    pivot_longer(cols = -timestamp, names_to = "Site", values_to = "Temperature") %>%
+    mutate(Site = gsub("salm_", "", Site), Month = floor_date(timestamp, "month"))
+  
+  monthly_summary <- data_long %>%
+    group_by(Site, Month) %>%
+    summarise(
+      Mean_Temperature = round(mean(Temperature, na.rm = TRUE), 2),
+      Min_Temperature = round(min(Temperature, na.rm = TRUE), 2),
+      Max_Temperature = round(max(Temperature, na.rm = TRUE), 2),
+      Median_Temperature = round(median(Temperature, na.rm = TRUE), 2),
+      SD_Temperature = round(sd(Temperature, na.rm = TRUE), 2),
+      .groups = 'drop'
+    ) %>%
+    arrange(Site, Month)
+  
+  return(monthly_summary)
+}
+
+df <- read_csv("../data/salmon-data.csv")
+monthly_summary <- calculate_monthly_summary(df)
+write_csv(monthly_summary, "monthly_summary_salmon.csv")
+
+```
+
+## Data Summary {.tabset}  
+
+```{r record_wrangle, include=FALSE}
+# Create the data frame
+data <- data.frame(
+  site = c(
+    "salm_outlet1_t1_21729340-qc", "salm_outlet1_t2_21729332-qc", "salm_trib1_t1_21729327-qc",
+    "salm_trib10_t1_21729190-qc", "salm_trib11_t1_21729203-qc", "salm_trib17_t1_21781245-qc",
+    "salm_trib19_t1_21729379-qc", "salm_trib2_t1_21729560-qc", "salm_trib20bt1_21729202-qc",
+    "salm_trib3_t1_21728491-qc", "salm_trib5_t1_21729401-qc", "salm_trib6_t1_21728481-qc",
+    "salm_trib7_t1_21728579-qc", "salm_trib8_t1_21729201-qc", "salm_trib9_t1_21728483-qc"
+  ),
+  start_time = c(
+    "2024-04-23 9:00", "2024-06-12 1:30", "2024-06-12 11:10", 
+    "2024-06-19 12:00", "2024-06-18 9:00", "2024-06-20 14:10", 
+    "2024-06-20 11:50", "2024-06-12 10:00", "2024-06-25 9:20", 
+    "2024-06-12 8:50", "2024-06-12 12:40", "2024-06-12 14:00", 
+    "2024-06-12 15:00", "2024-06-18 13:00", "2024-06-18 11:10"
+  ),
+  stop_time = c(
+    "2024-09-24 13:10", "2024-09-24 13:10", "2024-08-19 13:00", 
+    "2024-08-26 11:40", "2024-08-26 9:50", "2024-08-28 10:20", 
+    "2024-08-28 9:20", "2024-08-19 11:50", "2024-08-28 8:50", 
+    "2024-08-19 11:00", "2024-08-19 14:40", "2024-08-26 13:20", 
+    "2024-08-26 13:50", "2024-08-26 7:40", "2024-08-26 8:30"
+  ),
+  Pass = c(44403, 44403, 19607, 19581, 19883, 19827, 19843, 19607, 18427, 19611, 19609, 21593, 21587, 19809, 19841)
+)
+
+# Use kable to render the table
+kable(data, col.names = c("Site", "Start Time", "Stop Time", "Pass"), caption = "Summary of Time Series Data")
+
+```
+
+### Record Length
+```{r record_table, include=TRUE}
+# Use kable to render the table
+kable(data, col.names = c("Site", "Start Time", "Stop Time", "Pass"), caption = "Summary of Time Series Data")
+```
+
+
+### Summary Statistics 
+```{r summary_table, include=TRUE}
+monthly_summary %>%
+  kable("html", caption = "Monthly Temperature Summary Statistics by Site") %>%
+  kable_styling("striped", full_width = FALSE) %>%
+  column_spec(1, bold = TRUE) %>%
+  column_spec(3:7, width = "8em")
+```

@@ -1,0 +1,102 @@
+---
+title: "WSC Guage Comparison"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, echo = FALSE)
+# Explanation of code
+## Action required
+
+#load packages
+lapply(c("tidyverse", "GGally", "lubridate", "plotly", "knitr"), library, character.only = TRUE)
+
+## Set working directory
+
+opts_knit$set(root.dir = "~/git-repos/wx-tools/data_input/")
+
+```
+
+
+```{r data wrangling, include=FALSE}
+
+#read in wsc and hyac data with na's
+df <- read_csv("wsc_complete_10min.csv", 
+               col_types = cols(Date = col_datetime(format = "%Y-%m-%d %H:%M")))
+
+df_cor = select(df, -c(1))#remove data column to prepare for cor matrix 
+
+#remove extra rows
+df_drop<-df[-c(61112:61200),]
+
+df_na<-df_drop %>% 
+  summarise(across(everything(), ~ sum(is.na(.)), .names = "{.col}_na.count"))#generate NA count
+
+```
+
+## Station notes
+
+Data sheet represents aggregated 10 minute water level data from Hyacinthe, Carnation, Little Qualicum, and Robert's creek for the time period 2022-01-27 to 2023-03-27.  
+
+
+`r paste("First created on 2023-05-04. Updated on", Sys.Date())`
+
+
+##### Correlation Matrices 
+```{r plot-corr, include=TRUE}
+
+#rough corr matrix plot
+p<-ggpairs(df_cor)+theme_bw()
+
+ggplotly(p)
+
+```
+
+
+##### Carnation Creek
+```{r watlev_carn, include=TRUE}
+
+plot_ly(df, x = ~Date, y = ~`watlev_carn`, 
+        type = 'scatter', 
+        mode = 'lines') %>%
+  layout(title = " ", 
+         xaxis = list(title = "Date"),
+         yaxis = list(side="left", title = 'Water Level (m)'))
+         
+
+```
+
+##### Hyacinthe Creek
+```{r watlev_hyac, include=TRUE}
+
+plot_ly(df, x = ~Date, y = ~`watlev_hyac`, 
+               type = 'scatter', mode = 'lines', name = 'Hyac-Twtr') %>%
+  layout(title = " ", 
+         xaxis = list(title = "Date"),
+         yaxis = list(side="left", title = ' '))
+```
+
+##### Roberts Creek
+```{r watlev_rob, include=TRUE}
+
+plot_ly(df, x = ~Date, y = ~`watlev_rob`, 
+               type = 'scatter', mode = 'lines', name = 'Hyac-Twtr') %>%
+  layout(title = " ", 
+         xaxis = list(title = "Date"),
+         yaxis = list(side="left", title = ' '))
+
+```
+##### Little Quallicum 
+```{r watlev_qual, include=TRUE}
+
+plot_ly(df, x = ~Date, y = ~`watlev_qual`, 
+               type = 'scatter', mode = 'lines', name = 'Hyac-Twtr') %>%
+  layout(title = " ", #barmode = 'stack',
+         xaxis = list(title = "Date"),
+         yaxis = list(side="left", title = ' '))
+
+```
+

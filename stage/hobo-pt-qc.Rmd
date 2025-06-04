@@ -1,0 +1,129 @@
+---
+title: "Hobo PT QAQC"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, echo = FALSE)
+# Explanation of code
+## Action required
+
+#Install and/or load packages
+#install.packages('ggplot2')
+#install.packages('plotly')
+#install.packages('tidyverse')
+
+library(ggplot2)
+library(plotly)
+library(tidyverse)
+library(knitr)
+library(lubridate)
+
+## Set working directory
+setwd("~/git-repos/wx-tools/data_input")
+
+```
+
+
+```{r load pt data, include=FALSE}
+
+#pull in data from folder
+# Load data - read headers
+fileheaders <- read.csv("626_PT_20409274_20230508_corrected.csv",
+                        nrows = 1, as.is = TRUE,
+                        header = FALSE)
+# Read in data, drop redundant header rows
+df <- read.csv("626_PT_20409274_20230508_corrected.csv",
+                 header = FALSE,
+                 skip = 4,
+                 stringsAsFactors = FALSE)
+
+# Add headers to dataframe
+colnames(df) <- fileheaders
+names(df)
+glimpse(df)
+
+
+#assign new column names
+names(df) <- c("NA","Date", "abs_pres", "temp","pres", "watlev")
+names(df)
+
+#Drop by column position
+df = select(df, -c(1))
+
+#set date format
+df$Date<-as.POSIXct(df$Date,format="%Y-%m-%d %H:%M")
+
+```
+
+
+```{r qc_flagging, include = FALSE}
+
+data_flagged<-watlev %>% 
+  mutate(depth_diff = lead(`hyac-depth`)-lag(`hyac-depth`), #computes difference between depths
+         flag = if_else(depth_diff>0.02, "SVC", "AV"), #flags based on maximum allowable depth change per time interval
+         temp_diff = lead(`hyac-twtr`)-lag(`hyac-twtr`), #computes difference between temps
+         flag = if_else(temp_diff>2, "SVC", "AV"), #flags based on maximum allowable temp change per time interval
+         flag = if_else(`hyac-twtr`< 0, "SVC", "AV"), #flags based on min temp -- potential for freezing
+         flag = if_else(Date>="2022-09-11 02:10:00"& Date<="2022-09-28 12:00:00", "SVC", "AV")) %>% #date range for unusual stage drop
+       select(-depth_diff, -temp_diff) #remove unneeded columns 
+
+
+data_SVC <- data_flagged %>% 
+  filter(flag == 'SVC')
+data_AV <- data_flagged %>% 
+  filter(flag == 'AV')
+```
+
+## Hobo PT network 
+
+Two Onset Hobo U20L-04 pressure transducers (one measuring water pressure and one measuring air pressure) were installed 2018-08-27 to support the existing stage sensor network and serve as a bakcup in the event of a sensor failure or power issue with the network. The sensors log on 30 minute intervals and are downloaded twice per year. This dataset reflects the current time series and contains  `r nrow(data)` measurements of which `r nrow(data_SVC)` are flagged as suspicious, while `r nrow(data_AV)` are flagged as accepted. 24hr rainfall data from the Quadra station has been qc'd outside of this document up-to-date to October 2022, and is displayed on the Hakai sensor network.
+
+`r paste("First created on 2023-05-08. Updated on", Sys.Date())`
+
+```{r qc_flagging, include = FALSE}
+
+data_flagged<-df %>% 
+  mutate(depth_diff = lead(df$watlev)-lag(df$watlev), #computes difference between depths
+         flag = if_else(depth_diff>0.02, "SVC", "AV"), #flags based on maximum allowable depth change per time interval
+         temp_diff = lead(df$temp)-lag(df$temp), #computes difference between temps
+         flag = if_else(temp_diff>2, "SVC", "AV"), #flags based on maximum allowable temp change per time interval
+         flag = if_else(df$temp< 0, "SVC", "AV"))
+
+data_SVC <- data_flagged %>% 
+  filter(flag == 'SVC')
+
+data_AV <- data_flagged %>% 
+  filter(flag == 'AV')
+```
+
+##### Water Level
+```{r plot-watlev, include=TRUE}
+
+plot_ly(df, x = ~Date, y = ~`watlev`, 
+        type = 'scatter', 
+        mode = 'lines') %>%
+  layout(title = " ", #barmode = 'stack',
+         xaxis = list(title = "Date"),
+         yaxis = list(side="left", title = 'Water Level (m)'))
+         
+
+```
+
+##### Water Temperature
+```{r plot-temp, include=TRUE}
+
+plot_ly(df, x = ~Date, y = ~`temp`, 
+               type = 'scatter', mode = 'lines', name = 'Hyac-Twtr') %>%
+  layout(title = " ", #barmode = 'stack',
+         xaxis = list(title = "Date"),
+         yaxis = list(side="left", title = ' '))
+
+```
+
+
+
+

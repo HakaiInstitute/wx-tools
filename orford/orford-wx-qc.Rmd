@@ -1,0 +1,749 @@
+---
+title: "Nanwakolas Member Nations Focal Watersheds Data Summary 2018-2023 [V1]"
+author: " prepared by: Emily Haughton"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, echo = FALSE)
+# Explanation of code
+## Action required
+
+#Install and/or load packages
+#install.packages('ggplot2')
+#install.packages('plotly')
+#install.packages('tidyverse')
+#install.packages("htmlwidgets")
+
+library(ggplot2)
+library(plotly)
+library(tidyverse)
+library(knitr)
+library(lubridate)
+library(htmlwidgets)
+library(kableExtra)
+
+
+
+## Set working directory
+opts_knit$set(root.dir = "~/git-repos/wx-tools/data_input/")
+```
+
+```{r record_prep, include=FALSE}
+# Load data - read headers
+fileheaders <- read.csv("filtered-nanwakolas.csv",
+                        nrows = 1, as.is = TRUE,
+                        header = FALSE)
+# Read in data, drop redundant header rows
+df <- read.csv("filtered-nanwakolas.csv",
+                 header = FALSE,
+                 skip = 4,
+                 stringsAsFactors = FALSE)
+
+# Add headers to dataframe
+colnames(df) <- fileheaders
+names(df)
+glimpse(df)
+df<-merged_df
+df$date<-as.POSIXct(df$date,format="%Y-%m-%d %H:%M")
+str(df)
+site_time_periods <- df %>%
+  group_by(site) %>%
+  summarize(StartDate = min(date), EndDate = max(date))
+
+site_time_periods$StartDate <- as.Date(site_time_periods$StartDate)
+site_time_periods$EndDate <- as.Date(site_time_periods$EndDate)
+
+```
+## Background
+
+In 2018, river monitoring stations were established in five watersheds: Glendale River, Lull Creek, Fulmore River, Tuna River (aka Blenkinsop), and Heydon Creek. Initial monitoring of these systems has focused on water level, and water temperature with an emphasis on collecting data relevant to understanding in-stream conditions for salmon and potential impacts from climate change and forestry on those indicators (e.g., river temperature, flow, and sediment loads). At the outset, each site consisted of two Onset Hobo U20L-04 pressure transducers (one measuring water pressure and one measuring air pressure) and one Tidbit V2 temperature logger to support the collection of baseline data for stream conditions. The following presents a summary of the qaqc status for each monitoring site. 
+
+Accompanying background documents detailing installation methods, locations, and overarching project goals can be found in the following documents:
+
+"Establishment of Stream Monitoring Stations in Five Focal Watersheds of the Nanwakolas Council Member Nations"
+"Updates to the Lull Creek Observation Station 2019-10-17"
+"Updates to the Glendale River Observation Station 2021-09-19"
+"Status Update for Nanwakolas Watersheds 2021-06-22"
+"Updates to the Lull Creek Observation Station 2023-06-27"
+
+
+## Length of data record
+
+Figure 1. Breakdown of length of data record per monitoring site. 
+
+```{r record_length, include = TRUE}
+ggplot(site_time_periods, aes(x = StartDate, xend = EndDate, y = site)) +
+  geom_segment(aes(yend = site)) +
+  scale_x_date(date_labels = "%Y-%m", date_breaks = "1 year") +
+  labs(x = "Length of Record", y = "Site Name") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+
+## QC methods
+
+The following depicts the typical methodology applied to create the stream stage, and temperature time-series data package which uses 5-minute average measurements that are quality controlled (QC’d), flagged and corrected where needed (Table 1-4) outlined below: 
+
+1.	Download annual data
+2.	Check for outliers
+3.	Check for prevalence of automated flags
+4.	Range -- Confirm data fall within realistic upper and lower bounds (i.e typically no sub-zero temperatures in summer months depending on elevation of site) 
+5.	Persistence -- Is there a repeated value indicative of a sensor malfunction?
+6.	Internal consistency -- Are values realistic for a given time period? (i.e does water temperature fluctuate diurnally?) 
+7.	Spatial consistency -- Are data patterns consistent with what networked sensors in the same area recorded?
+8.	Manual gap-filling -- Use linear regression to establish relationship between two sensors and compute missing values for gap-filling
+9.	 Assign flags to remaining data in accordance with “Hakai Sensor Network Quality Control (QC)” document 
+10.	Re-upload to Sensor Network QC portal
+
+
+
+
+
+```{r load tuna_data, include=FALSE}
+
+# Load data - read headers
+fileheaders <- read.csv("tuna-2023-qc.csv",
+                        nrows = 1, as.is = TRUE,
+                        header = FALSE)
+# Read in data, drop redundant header rows
+tuna <- read.csv("tuna-2023-qc.csv",
+                 header = FALSE,
+                 skip = 4,
+                 stringsAsFactors = FALSE)
+
+# Add headers to dataframe
+colnames(tuna) <- fileheaders
+names(tuna)
+glimpse(tuna)
+
+```
+
+```{r tuna_format, include=FALSE}
+
+colnames(tuna)[1] <- "Date"
+tuna$Date<-as.POSIXct(tuna$Date,format="%Y-%m-%d %H:%M")
+
+#select only avg and QAQC columns and Date
+tuna<-tuna %>% 
+  select(1,5,6,9,13,14,17,21,22,25)
+
+#check structure
+str(tuna)
+
+#separate into variable dataframes
+depth<-tuna %>% 
+  select("Date", contains("Depth"))
+tidbit<-tuna %>% 
+  select("Date", contains("TB"))
+temp<-tuna %>% 
+  select("Date", contains("Twtr"))
+
+```
+
+
+
+
+```{r tuna_wrangling, include=FALSE}
+
+#count flags for previously qc'd depth data       
+SV <- "SV"
+SV_depth <- sum(grepl(SV, depth$DepthTUNA1PT_Q_flags))
+
+AV <- "AV"
+AV_depth <- sum(grepl(AV, depth$DepthTUNA1PT_Q_flags))
+
+MV <- "MV"
+MV_depth <- sum(grepl(MV, depth$DepthTUNA1PT_Q_flags))
+
+first_date <- depth$Date[1]
+last_date <- depth$Date[nrow(depth)]
+
+#count flags for previously qc'd temp data  
+total_rows <- nrow(temp)
+SV_temp <- sum(grepl(SV, temp$TWtrTUNA1PT_Q_flags))
+AV_temp <- sum(grepl(AV, temp$TWtrTUNA1PT_Q_flags))
+MV_temp <- sum(grepl(MV, temp$TWtrTUNA1PT_Q_flags))
+
+first_date_temp <- temp$Date[1]
+last_date_temp <- temp$Date[nrow(temp)]
+
+#count flags for previously qc'd tidbit data  
+tidbit_cleaned<-na.omit(tidbit)
+total_rows <- nrow(tidbit_cleaned)
+SV_tid <- sum(grepl(SV, tidbit_cleaned$TWtrTUNA1_TB1_Q_flags))
+AV_tid <- sum(grepl(AV, tidbit_cleaned$TWtrTUNA1_TB1_Q_flags))
+MV_tid <- sum(grepl(MV, tidbit_cleaned$TWtrTUNA1_TB1_Q_flags))
+
+# Define the start and end dates for the date range
+first_date_tid <- temp$Date[1]
+last_date_tid <- temp$Date[nrow(tidbit_cleaned)]
+
+
+str(tuna)
+```
+
+
+```{r tuna_table_prep,  include=FALSE}
+
+# Create a new dataframe
+combined_tuna <- data.frame(
+  Variable = c("PT_depth", "PT_temp", "Tidbit_temp"),
+  Start_date = c(first_date, first_date_temp, first_date_tid),
+  End_date = c(last_date, last_date_temp, last_date_tid),
+  AV = c(AV_depth, AV_temp, AV_tid),
+  SV = c(SV_depth, SV_temp, SV_tid),
+  MV = c(MV_depth, MV_temp, MV_tid),
+  Total_records = c(nrow(depth), nrow(temp), nrow(tidbit_cleaned))
+)
+
+
+
+```
+
+
+## Tuna River Overview
+
+ The installation is located under a bridge and experienced potential influence from sediment buildup in the PVC housing until the PVC was swapped for a slotted version on 2022-06-20. The sensors logged on 10 minute intervals until 2022-06-20 at which point they were changed to log on 30 minute intervals to lessen download frequency. The sensors are typically downloaded 1 to 2 times per year. This data set reflects the current time series from `r first_date` to `r last_date` with `r nrow(tuna)` measurements. Data is also stored and available for viewing on the Hakai sensor network. 
+
+`r paste("First created on 2023-04-27. Updated on", Sys.Date())`
+
+## Tuna Metadata 
+
+* 2018-08-21 site established 
+* 2018-11-03 Hakai tech visit; sensor download; 
+* 2019-02-06 sensors downloaded; re-installed at different elevation; ~3cm offset back-corrected 2018-08-21 0:00 to 2019-02-06 13:15
+* 2019-10-10 sensors downloaded; potential sediment buildup/flushing noticed in data record 
+* 2020-05-23 sensor memory full; noisy depth data possibly caused by sediment buildup; 2hr moving average back-corrected 2020-05-23 to 2019-10:10 
+* 2020-08-06 tidbit memory full
+* 2021-02-22 sensors downloaded; tidbit missing
+* 2021-10-04 sensor memory full
+* 2022-06-20 Hakai tech on site swapped drilled PVC pipe swapped for slotted; staff gauge installed; sensor logging changed to half hourly and new tidbit installed
+* 2022-07-25 sensors downloaded
+* 2023-08-25 sensors downloaded; shuttle corrupted file on previous download -- no data for time period 2022-07-25 to 2022-12-09 
+
+
+```{r tuna_table, include=TRUE, results='asis'}
+
+tuna_table<-kable(combined_tuna, format = "markdown", caption="Table 1. Quality control flag count summary for Tuna River.") 
+  
+tuna_table
+
+
+```
+
+```{r load lull_data, include=FALSE}
+
+# Load data - read headers
+fileheaders <- read.csv("lull-2023-qc.csv",
+                        nrows = 1, as.is = TRUE,
+                        header = FALSE)
+# Read in data, drop redundant header rows
+lull <- read.csv("lull-2023-qc.csv",
+                 header = FALSE,
+                 skip = 4,
+                 stringsAsFactors = FALSE)
+
+# Add headers to dataframe
+colnames(lull) <- fileheaders
+names(lull)
+glimpse(lull)
+
+
+#check structure
+str(lull)
+```
+
+```{r lull_format, include=FALSE}
+
+colnames(lull)[1] <- "Date"
+lull$Date<-as.POSIXct(lull$Date,format="%Y-%m-%d %H:%M")
+
+#select only avg and QAQC columns and Date
+lull<-lull %>% 
+  select(1,5,6,9,13,14,17,21,22,25)
+
+#check structure
+str(lull)
+
+#separate into variable dataframes
+depth<-lull %>% 
+  select("Date", contains("Depth"))
+tidbit<-lull %>% 
+  select("Date", contains("TB"))
+temp<-lull %>% 
+  select("Date", contains("Twtr"))
+
+```
+
+
+
+
+```{r lull_wrangling, include=FALSE}
+
+#count flags for previously qc'd depth data       
+SV <- "SV"
+SV_depth <- sum(grepl(SV, depth$DepthLULL1PT_Q_flags))
+
+AV <- "AV"
+AV_depth <- sum(grepl(AV, depth$DepthLULL1PT_Q_flags))
+
+MV <- "MV"
+MV_depth <- sum(grepl(MV, depth$DepthLULL1PT_Q_flags))
+
+first_date <- depth$Date[1]
+last_date <- depth$Date[nrow(depth)]
+
+#count flags for previously qc'd temp data  
+total_rows <- nrow(temp)
+SV_temp <- sum(grepl(SV, temp$TWtrLULL1PT_Q_flags))
+AV_temp <- sum(grepl(AV, temp$TWtrLULL1PT_Q_flags))
+MV_temp <- sum(grepl(MV, temp$TWtrLULL1PT_Q_flags))
+
+first_date_temp <- temp$Date[1]
+last_date_temp <- temp$Date[nrow(temp)]
+
+#count flags for previously qc'd tidbit data  
+
+total_rows <- nrow(tidbit)
+SV_tid <- sum(grepl(SV, tidbit$TWtrLULL1_TB1_Q_flags))
+AV_tid <- sum(grepl(AV, tidbit$TWtrLULL1_TB1_Q_flags))
+MV_tid <- sum(grepl(MV, tidbit$TWtrLULL1_TB1_Q_flags))
+
+# Define the start and end dates for the date range
+first_date_tid <- as.POSIXct("2018-08-22 00:23:00")
+last_date_tid <- as.POSIXct("2022-08-03 14:55:00")
+
+
+```
+
+
+```{r lull_creation,  include=FALSE}
+
+# Create a new dataframe
+combined_LULL <- data.frame(
+  Variable = c("PT_depth", "PT_temp", "Tidbit_temp"),
+  Start_date = c(first_date, first_date_temp, first_date_tid),
+  End_date = c(last_date, last_date_temp, last_date_tid),
+  AV = c(AV_depth, AV_temp, AV_tid),
+  SV = c(SV_depth, SV_temp, SV_tid),
+  MV = c(MV_depth, MV_temp, MV_tid),
+  Total_records = c(nrow(depth), nrow(temp), nrow(tidbit_cleaned))
+)
+
+
+
+```
+
+## Lull Creek Overview
+
+ The installation is located on a large boulder on river right and experienced potential influence from sediment buildup in the PVC housing until the PVC was swapped for a slotted version on 2019-09-30. The sensors logged on 10 minute intervals until 2023-06-27 at which point they were changed to log on 30 minute intervals to lessen download frequency. This data set reflects the current time series from `r first_date` to `r last_date` with `r nrow(lull)` measurements. Following the potential landslide in fall 2020, the water level installation became insecure. It was removed from site and reinstalled in June 2020. Following this, the installation remained susceptible to movement during turbulent flows, and thus a constant sensor elevation cannot be guaranteed. Due to the changing sensor elevation and difficulty delineating the extent of the changes caution should be taken when using the water level record for any robust analysis. 
+
+
+
+## Lull Metadata 
+
+* 2018-08-23 site established 
+* 2019-04 installation removed due to extensive sediment buildup 
+* 2019-09-30 installation re-installed by Hakai tech; drilled PVC swapped for slotted
+* 2020 landslide at some point, telsepar knocked upwards and boulder it was mounted to was dislodged 
+* 2020-02-27 last record of data until re-installed by Mamalilikulla Guardians -- 2020-06-08 
+* 2020-08-22 download, sensor elevation change 
+* 2020-10-16 download, sensor elevation change 
+* 2021-08-11 download, sensor elevation change 
+* 2021-09-29 download, sensor elevation change
+* 2022-04-20 download, sensor elevation change
+* 2022-08-02 download, sensor elevation change
+* 2023-01-01 sensor memory full
+* 2023-03-07 download
+* 2023-06-27 Hakai tech on-site; installed new sensor directly beside existing sensor (not at same elevation); original sensor installation not secure and could have been moving prior to this following the potential landslide in 2020
+
+
+```{r lull_table, include=TRUE, results='asis'}
+
+LULL_table<-kable(combined_LULL, format = "markdown", caption="Table 2. Quality control flag count summary for Lull Creek.") 
+  
+LULL_table
+
+
+```
+
+
+
+```{r load ful_data, include=FALSE}
+
+# Load data - read headers
+fileheaders <- read.csv("fulmore-2023-qc.csv",
+                        nrows = 1, as.is = TRUE,
+                        header = FALSE)
+# Read in data, drop redundant header rows
+ful <- read.csv("fulmore-2023-qc.csv",
+                 header = FALSE,
+                 skip = 4,
+                 stringsAsFactors = FALSE)
+
+# Add headers to dataframe
+colnames(ful) <- fileheaders
+names(ful)
+glimpse(ful)
+
+
+#check structure
+str(ful)
+```
+
+
+```{r ful_format, include=FALSE}
+
+colnames(ful)[1] <- "Date"
+ful$Date<-as.POSIXct(ful$Date,format="%Y-%m-%d %H:%M")
+
+#select only avg and QAQC columns and Date
+ful<-ful %>% 
+  select(1,5,6,9,13,14,17,21,22,25)
+
+#check structure
+str(ful)
+
+#separate into variable dataframes
+depth<-ful %>% 
+  select("Date", contains("Depth"))
+tidbit<-ful %>% 
+  select("Date", contains("TB"))
+temp<-ful %>% 
+  select("Date", contains("Twtr"))
+
+```
+
+
+
+
+```{r ful_wrangling, include=FALSE}
+
+#count flags for previously qc'd depth data       
+SV <- "SV"
+SV_depth <- sum(grepl(SV, depth$DepthFULL1PT_Q_flags))
+
+AV <- "AV"
+AV_depth <- sum(grepl(AV, depth$DepthFULL1PT_Q_flags))
+
+MV <- "MV"
+MV_depth <- sum(grepl(MV, depth$DepthFULL1PT_Q_flags))
+
+first_date <- depth$Date[1]
+last_date <- depth$Date[nrow(depth)]
+
+#count flags for previously qc'd temp data  
+total_rows <- nrow(temp)
+SV_temp <- sum(grepl(SV, temp$TWtrFULL1PT_Q_flags))
+AV_temp <- sum(grepl(AV, temp$TWtrFULL1PT_Q_flags))
+MV_temp <- sum(grepl(MV, temp$TWtrFULL1PT_Q_flags))
+
+first_date_temp <- temp$Date[1]
+last_date_temp <- temp$Date[nrow(temp)]
+
+#count flags for previously qc'd tidbit data  
+
+total_rows <- nrow(tidbit)
+SV_tid <- sum(grepl(SV, tidbit$TWtrFULL1_TB1_Q_flags))
+AV_tid <- sum(grepl(AV, tidbit$TWtrFULL1_TB1_Q_flags))
+MV_tid <- sum(grepl(MV, tidbit$TWtrFULL1_TB1_Q_flags))
+
+# Define the start and end dates for the date range
+first_date_tid <- as.POSIXct("2018-08-25 14:00")
+last_date_tid <- as.POSIXct("2019-08-28 11:35")
+
+
+```
+
+
+```{r ful_creation,  include=FALSE}
+
+# Create a new dataframe
+combined_ful <- data.frame(
+  Variable = c("PT_depth", "PT_temp", "Tidbit_temp"),
+  Start_date = c(first_date, first_date_temp, first_date_tid),
+  End_date = c(last_date, last_date_temp, last_date_tid),
+  AV = c(AV_depth, AV_temp, AV_tid),
+  SV = c(SV_depth, SV_temp, SV_tid),
+  MV = c(MV_depth, MV_temp, MV_tid),
+  Total_records = c(nrow(depth), nrow(temp), nrow(tidbit_cleaned))
+)
+
+
+
+```
+
+## Fulmore River Overview
+
+The installation was established on 2018-08-28 and is located on a large boulder on river right, with the tidbit mounted center stream down from a riffle. This site has not appeared to show any signs of sediment buildup so no PVC has been swapped. The sensors logged on 10 minute intervals until 2022-06-20 at which point they were changed to log on 30 minute intervals to lessen download frequency. The barometric pressure sensor was not downloaded and so the period The sensors are typically downloaded 1 to 2 times per year. This data set reflects the current time series from `r first_date` to `r last_date` with `r nrow(ful)` measurements. 
+
+
+## Fulmore Metadata 
+
+* 2018-08-28 site established 
+* 2018-11-07 Hakai tech on-site; sensors downloaded; tidbit inaccessible  
+* 2019-06-21 sensors downloaded; tidbit inaccessible 
+* 2019-09-03 sensors downloaded
+* 2020-04-27 sensors downloaded 
+* 2021-09-01 sensors downloadede 
+* 2022-06-20 Hakai tech on-site; sensors downloaded; tidbit inaccessible; staff gauge installed 
+
+
+```{r ful_table, include=TRUE, results='asis'}
+
+ful_table<-kable(combined_ful, format = "markdown", caption="Table 2. Quality control flag count summary for Fulmore River.") 
+  
+ful_table
+
+
+```
+
+
+```{r load heyd_data, include=FALSE}
+
+# Load data - read headers
+fileheaders <- read.csv("heydon-2023-qc.csv",
+                        nrows = 1, as.is = TRUE,
+                        header = FALSE)
+# Read in data, drop redundant header rows
+heyd <- read.csv("heydon-2023-qc.csv",
+                 header = FALSE,
+                 skip = 4,
+                 stringsAsFactors = FALSE)
+
+# Add headers to dataframe
+colnames(heyd) <- fileheaders
+names(heyd)
+glimpse(heyd)
+
+
+#check structure
+str(heyd)
+```
+
+
+```{r heyd_format, include=FALSE}
+
+colnames(heyd)[1] <- "Date"
+heyd$Date<-as.POSIXct(heyd$Date,format="%Y-%m-%d %H:%M")
+
+#select only avg and QAQC columns and Date
+heyd<-heyd %>% 
+  select(1,5,6,9,13,14,17,21,22,25)
+
+#check structure
+str(heyd)
+
+#separate into variable dataframes
+depth<-heyd %>% 
+  select("Date", contains("Depth"))
+tidbit<-heyd %>% 
+  select("Date", contains("TB"))
+temp<-heyd %>% 
+  select("Date", contains("Twtr"))
+
+```
+
+
+
+
+```{r heyd_wrangling, include=FALSE}
+
+#count flags for previously qc'd depth data       
+SV <- "SV"
+SV_depth <- sum(grepl(SV, depth$DepthHEYD2PT_Q_flags))
+
+AV <- "AV"
+AV_depth <- sum(grepl(AV, depth$DepthHEYD2PT_Q_flags))
+
+MV <- "MV"
+MV_depth <- sum(grepl(MV, depth$DepthHEYD2PT_Q_flags))
+
+first_date <- depth$Date[1]
+last_date <- depth$Date[nrow(depth)]
+
+#count flags for previously qc'd temp data  
+total_rows <- nrow(temp)
+SV_temp <- sum(grepl(SV, temp$TWtrHEYD1PT_Q_flags))
+AV_temp <- sum(grepl(AV, temp$TWtrHEYD1PT_Q_flags))
+MV_temp <- sum(grepl(MV, temp$TWtrHEYD1PT_Q_flags))
+
+first_date_temp <- temp$Date[1]
+last_date_temp <- temp$Date[nrow(temp)]
+
+#count flags for previously qc'd tidbit data  
+
+total_rows <- nrow(tidbit)
+SV_tid <- sum(grepl(SV, tidbit$TWtrHEYD1_TB1_Q_flags))
+AV_tid <- sum(grepl(AV, tidbit$TWtrHEYD1_TB1_Q_flags))
+MV_tid <- sum(grepl(MV, tidbit$TWtrHEYD1_TB1_Q_flags))
+
+# Define the start and end dates for the date range
+first_date_tid <- as.POSIXct("2018-08-25 14:00")
+last_date_tid <- as.POSIXct("2019-08-28 11:35")
+
+
+```
+
+
+```{r heyd_creation,  include=FALSE}
+
+# Create a new dataframe
+combined_heyd <- data.frame(
+  Variable = c("PT_depth", "PT_temp", "Tidbit_temp"),
+  Start_date = c(first_date, first_date_temp, first_date_tid),
+  End_date = c(last_date, last_date_temp, last_date_tid),
+  AV = c(AV_depth, AV_temp, AV_tid),
+  SV = c(SV_depth, SV_temp, SV_tid),
+  MV = c(MV_depth, MV_temp, MV_tid),
+  Total_records = c(nrow(depth), nrow(temp), nrow(tidbit_cleaned))
+)
+
+
+
+```
+
+## Heydon River Overview
+
+The installation was established on 2018-09-26 and located ~50m downstream of the major bridge. It was uninstalled on 2019-03-25. Currently the DFO operates a hydromet station on the bridge. This data set reflects the current time series from `r first_date` to `r last_date` with `r nrow(heyd)` measurements. 
+
+
+
+## Heydon Metadata 
+
+* 2018-09-26 site established 
+* 2019-03-25 site decommissioned
+
+```{r heyd_table, include=TRUE, results='asis'}
+
+heyd_table<-kable(combined_heyd, format = "markdown", caption="Table 3. Quality control flag count summary for Heydon River.") 
+  
+heyd_table
+
+
+```
+
+
+```{r load glen_data, include=FALSE}
+
+# Load data - read headers
+fileheaders <- read.csv("glendale-2023-qc.csv",
+                        nrows = 1, as.is = TRUE,
+                        header = FALSE)
+# Read in data, drop redundant header rows
+glen <- read.csv("glendale-2023-qc.csv",
+                 header = FALSE,
+                 skip = 4,
+                 stringsAsFactors = FALSE)
+
+# Add headers to dataframe
+colnames(glen) <- fileheaders
+names(glen)
+glimpse(glen)
+
+
+#check structure
+str(glen)
+```
+
+
+```{r glen_format, include=FALSE}
+
+colnames(glen)[1] <- "Date"
+glen$Date<-as.POSIXct(glen$Date,format="%Y-%m-%d %H:%M")
+
+#select only avg and QAQC columns and Date
+glen<-glen %>% 
+  select(1,5,6,9,13,14,17)
+
+#check structure
+str(glen)
+
+#separate into variable dataframes
+depth<-glen %>% 
+  select("Date", contains("Depth"))
+
+temp<-glen %>% 
+  select("Date", contains("Twtr"))
+
+```
+
+
+
+
+```{r glen_wrangling, include=FALSE}
+
+#count flags for previously qc'd depth data       
+SV <- "SV"
+SV_depth <- sum(grepl(SV, depth$DepthGLEN1PT_Q_flags))
+
+AV <- "AV"
+AV_depth <- sum(grepl(AV, depth$DepthGLEN1PT_Q_flags))
+
+MV <- "MV"
+MV_depth <- sum(grepl(MV, depth$DepthGLEN1PT_Q_flags))
+
+first_date <- depth$Date[1]
+last_date <- depth$Date[nrow(depth)]
+
+#count flags for previously qc'd temp data  
+total_rows <- nrow(temp)
+SV_temp <- sum(grepl(SV, temp$TWtrGLEN1PT_Q_flags))
+AV_temp <- sum(grepl(AV, temp$TWtrGLEN1PT_Q_flags))
+MV_temp <- sum(grepl(MV, temp$TWtrGLEN1PT_Q_flags))
+
+first_date_temp <- temp$Date[1]
+last_date_temp <- temp$Date[nrow(temp)]
+
+
+```
+
+
+```{r glen_creation,  include=FALSE}
+
+# Create a new dataframe
+combined_glen <- data.frame(
+  Variable = c("PT_depth", "PT_temp"),
+  Start_date = c(first_date, first_date_temp),
+  End_date = c(last_date, last_date_temp),
+  AV = c(AV_depth, AV_temp),
+  SV = c(SV_depth, SV_temp),
+  MV = c(MV_depth, MV_temp),
+  Total_records = c(nrow(depth), nrow(temp))
+)
+
+
+
+```
+
+## Glendale River Overview
+
+The installation is located under a bridge and experienced severe buildup from sediment in the PVC housing until the PVC was swapped for a slotted version on 2021-09-17. The sensors logged on 10 minute intervals until 2021-09-17 at which point they were changed to log on 30 minute intervals to lessen download frequency. The sensors are typically downloaded 1 to 2 times per year, however this site has typically been downloaded less due to staffing and access issues. This data set reflects the current time series from `r first_date` to `r last_date` with `r nrow(glen)` measurements. 
+
+
+
+## Glendale Metadata 
+
+* 2018-08-25 site established 
+* 2019-04-07 sensor memory full 
+* 2019-06-10 sensors downloaded; tidbit inaccessible
+* 2019-10-18 sensors downloaded; severe sediment buildup noted 
+* 2021-09-17 Hakai tech on site; PVC swapped; sensors downloaded; tidbit inaccessible due to higher flows
+
+
+```{r glen_table, include=TRUE, results='asis'}
+
+glen_table<-kable(combined_glen, format = "markdown", caption="Table 4. Quality control flag count summary for Glendale River.") 
+  
+glen_table
+
+
+```
+
+
+
