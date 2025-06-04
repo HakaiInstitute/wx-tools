@@ -21,13 +21,22 @@ table_name <- glue("{station_name}:{sampling_interval}")
 qc_table_name <- create_qc_table_name(table_name)
 meas_start_date <- "2016-04-01"
 meas_end_date <- "2016-04-04"
+field_names <- glue_collapse(
+  c(
+    "measurementTime",
+    glue("{station_name}:PLS2_Lvl"),
+    glue("{station_name}:PLS2_Lvl_QL"),
+    glue("{station_name}:PLS2_Lvl_QC")
+  ),
+  sep = ","
+)
 
 # Initialize the client
 hakai_client <- hakaiApi::Client$new(baseurl)
 
 # Step 1: Load the data
 ## contruct the url
-url <- glue("{baseurl}/sn/views/{table_name}Samples?measurementTime>={meas_start_date}&measurementTime<{meas_end_date}&limit=-1")
+url <- glue("{baseurl}/sn/views/{table_name}Samples?measurementTime>={meas_start_date}&measurementTime<{meas_end_date}&fields={field_names}&limit=-1")
 df_raw <- hakai_client$get(url)
 
 ## set types explicitly
