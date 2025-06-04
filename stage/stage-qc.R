@@ -52,7 +52,7 @@ df <- df %>%
     stage_filled = zoo::na.approx(stage, x = measurementTime, maxgap = 12, na.rm = FALSE),
     qflag = case_when(
       is.na(stage) & !is.na(stage_filled) ~ "EV_LINEAR",  # Linear fill
-      TRUE ~ qflag
+      TRUE ~ as.character(qflag)
     )
   )
 
