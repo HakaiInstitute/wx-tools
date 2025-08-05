@@ -14,19 +14,19 @@ create_qc_table_name <- function(table_name) {
 }
 
 qc_author <- 'emily.haughton@hakai.org'
-baseurl <- "https://goose.hakai.org/api"
-station_name <- "SSN819US"
+baseurl <- "https://hecate.hakai.org/api"
+station_name <- "SSN844US"
 sampling_interval <- "5minute"
 table_name <- glue("{station_name}:{sampling_interval}")
 qc_table_name <- create_qc_table_name(table_name)
-meas_start_date <- "2016-04-01"
-meas_end_date <- "2016-04-04"
+meas_start_date <- "2023-06-01"
+meas_end_date <- "2023-06-30"
 field_names <- glue_collapse(
   c(
     "measurementTime",
-    glue("{station_name}:PLS2_Lvl"),
-    glue("{station_name}:PLS2_Lvl_QL"),
-    glue("{station_name}:PLS2_Lvl_QC")
+    glue("{station_name}:PLS_Lvl"),
+    glue("{station_name}:PLS_Lvl_QL"),
+    glue("{station_name}:PLS_Lvl_QC")
   ),
   sep = ","
 )
@@ -35,7 +35,7 @@ field_names <- glue_collapse(
 hakai_client <- hakaiApi::Client$new(baseurl)
 
 # Step 1: Load the data
-## contruct the url
+## construct the url
 url <- glue("{baseurl}/sn/views/{table_name}Samples?measurementTime>={meas_start_date}&measurementTime<{meas_end_date}&fields={field_names}&limit=-1")
 df_raw <- hakai_client$get(url)
 
@@ -48,11 +48,193 @@ df <- df_raw |>
 ## generic column renaming
 df <- df %>%
   rename_with(~ case_when(
-    str_ends(.x, ":PLS2_Lvl$") ~ "stage",
-    str_ends(.x, ":PLS2_Lvl_QL$") ~ "qlevel", 
-    str_ends(.x, ":PLS2_Lvl_QC$") ~ "qflag",
+    str_ends(.x, ":PLS_Lvl$") ~ "stage",
+    str_ends(.x, ":PLS_Lvl_QL$") ~ "qlevel", 
+    str_ends(.x, ":PLS_Lvl_QC$") ~ "qflag",
     TRUE ~ .x
   ))
+##########################################################################################################################################################
+#qc visualization
+##########################################################################################################################################################
+#subset df
+start_time<- as.POSIXct("2022-10-01 00:00", tz="America/Los_Angeles")
+end_time<-as.POSIXct("2025-10-01 00:00", tz="America/Los_Angeles")
+
+df_2025<-df %>% 
+  filter(measurementTime >=start_time&measurementTime<=end_time)
+
+#specify qc measurement range
+start_time_qc<- as.POSIXct("2023-06-05 07:35", tz="America/Los_Angeles")
+end_time_qc<-as.POSIXct("2023-06-11 17:25", tz="America/Los_Angeles")
+
+df_2025_qc<-df_2025 %>% 
+  mutate(stage=ifelse(measurementTime >=start_time_qc&measurementTime<=end_time_qc, NA, stage))
+
+plot1<-ggplot(df, aes(x=measurementTime, y=stage))+
+  geom_line(colour="steelblue", size=0.5) +
+  geom_point(colour="darkblue")+
+  labs(x = "Measurement Time",
+       y = "Stage (m)")+
+  theme_minimal() 
+
+plot1
+
+###############################
+df_2025_qc <- df_2025_qc %>%
+  mutate(
+    year = year(measurementTime),
+    stage_status = ifelse(is.na(stage), "Missing", "Measured")
+  )
+
+# Plot
+ggplot(df_2025_qc, aes(x = measurementTime, y = stage)) +
+  # Line for measured (non-NA) values
+  geom_line(data = subset(df_2025_qc, !is.na(stage)), aes(color = "Measured")) +
+  
+  # Points for missing (NA) values
+  geom_point(data = subset(df_2025_qc, is.na(stage)), aes(color = "Missing"), size = 0.7) +
+  
+  scale_color_manual(values = c("Measured" = "blue", "Missing" = "red")) +
+  
+  facet_wrap(~year, scales = "free_x") +
+  
+  labs(title = "Time Series of Stage by Year",
+       x = "Date",
+       y = "Stage",
+       color = "Data Status") +
+  
+  theme_minimal()
+
+#investigate missing data
+df_2025_qc %>%
+  mutate(year = year(measurementTime)) %>%
+  group_by(year) %>%
+  summarize(missing_stage_count = sum(is.na(stage)),
+            total = n(),
+            percent_missing = round(100 * missing_stage_count / total, 2))
+
+#plot with geom_rect
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+
+# Step 1: Identify missing periods
+df_2025_qc <- df_2025_qc %>%
+  arrange(measurementTime) %>%
+  mutate(
+    is_missing = is.na(stage),
+    time_diff = as.numeric(difftime(measurementTime, lag(measurementTime), units = "hours")),
+    gap_flag = ifelse(is.na(stage) & !is.na(lag(stage)), TRUE, FALSE),
+    year = year(measurementTime)
+  )
+
+# Step 2: Create a group ID for each run of missing values
+df_2025_qc$gap_group <- cumsum(!df_2025_qc$is_missing & (is.na(lag(df_2025_qc$is_missing)) | lag(df_2025_qc$is_missing) == TRUE))
+
+# Step 3: Extract continuous missing blocks
+missing_blocks <- df_2025_qc %>%
+  filter(is_missing) %>%
+  group_by(gap_group) %>%
+  summarize(
+    start_time = min(measurementTime),
+    end_time = max(measurementTime),
+    year = first(year)
+  ) %>%
+  ungroup()
+
+# Step 4: Plot with shaded gaps
+ggplot() +
+  # Background shaded gap rectangles
+  geom_rect(data = missing_blocks,
+            aes(xmin = start_time, xmax = end_time, ymin = -Inf, ymax = Inf),
+            fill = "red", alpha = 0.2) +
+  
+  # Actual measured data
+  geom_line(data = filter(df_2025_qc, !is.na(stage)),
+            aes(x = measurementTime, y = stage),
+            color = "blue") +
+  
+  facet_wrap(~year, scales = "free_x") +
+  labs(
+    title = "Time Series of Stage with Missing Data Gaps Highlighted",
+    x = "Date", y = "Stage"
+  ) +
+  theme_minimal()
+## gap fill
+library(dplyr)
+library(zoo)
+
+df_filled <- df_2025_qc %>%
+  arrange(measurementTime) %>%
+  mutate(
+    # Interpolate missing stage values
+    stage_filled = na.approx(stage, x = measurementTime, na.rm = FALSE),
+    
+    # Identify which rows were filled
+    was_gap_filled = is.na(stage) & !is.na(stage_filled),
+    
+    # Replace stage with filled values
+    stage = stage_filled,
+    
+    # Update qflag and qlevel where filling occurred
+    qflag = ifelse(was_gap_filled, "EV: gap-filled", qflag),
+    qlevel = ifelse(was_gap_filled, 2, qlevel)
+  ) %>%
+  select(-stage_filled, -was_gap_filled)
+
+
+#check # of fills
+df_filled %>% filter(qflag == "EV: gap-filled")
+
+#plot new dataset
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+
+# Assume df_filled contains interpolated data with updated qflag
+df_filled <- df_filled %>%
+  arrange(measurementTime) %>%
+  mutate(
+    year = year(measurementTime),
+    is_gap_filled = qflag == "EV: gap-filled"
+  )
+
+# Step 1: Identify continuous runs of gap-filled values
+df_filled$fill_group <- with(rle(df_filled$is_gap_filled), 
+                             rep(seq_along(values), lengths))
+
+# Step 2: Summarize rectangles for gap-filled runs only
+gap_filled_rects <- df_filled %>%
+  filter(is_gap_filled) %>%
+  group_by(fill_group, year) %>%
+  summarize(
+    start_time = min(measurementTime),
+    end_time = max(measurementTime),
+    .groups = "drop"
+  )
+
+# Step 3: Plot
+ggplot() +
+  # Shade gap-filled sections
+  geom_rect(data = gap_filled_rects,
+            aes(xmin = start_time, xmax = end_time, ymin = -Inf, ymax = Inf),
+            fill = "orange", alpha = 0.2) +
+  
+  # Stage time series line
+  geom_line(data = df_filled,
+            aes(x = measurementTime, y = stage),
+            color = "blue") +
+  
+  facet_wrap(~year, scales = "free_x") +
+  labs(
+    title = "Stage Time Series with Gap-Filled Sections Highlighted",
+    x = "Date", y = "Stage"
+  ) +
+  theme_minimal()
+
+
+##########################################################################################################################################################
+
 
 # Step 2: Apply linear interpolation for small gaps (<12)
 df <- df %>%
@@ -194,8 +376,8 @@ ggplot(final_df, aes(x = measurementTime)) +
   facet_wrap(~year, scales = "free_x", ncol = 1)
 
 # Create output df with only the required columns
-output_df <- final_df %>%
-  select(measurementTime, qlevel, qflag, stage_filled)
+output_df <- df_filled %>%
+  select(measurementTime, qlevel, qflag, stage)
 
 # format output for sending to SN QC
 output_df <- output_df %>%
@@ -203,7 +385,7 @@ output_df <- output_df %>%
     measurement_time = measurementTime,
     quality_level = qlevel,
     qc_flag = qflag,
-    val = stage_filled,
+    val = stage,
   )
 
 output_df['measurement_name'] <- 'PLS_Lvl'

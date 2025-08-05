@@ -25,7 +25,7 @@ drive_auth()
 drive_folder_id <- "https://drive.google.com/drive/folders/1VIfg4QhPMaV8Nthm_8j77Qmh1ZsU17a5"
 
 # Define your local folder to save files
-data_folder <- "C:/Users/Emily/Documents/git-repos/wx-tools/NC50-data-qc/data"
+data_folder <- "C:/Users/Emily/Documents/git-repos/wx-wrangle/NC50-data-qc/data"
 
 # List all files in the folder
 drive_files <- drive_ls(as_id(drive_folder_id))
