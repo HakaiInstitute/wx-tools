@@ -25,7 +25,7 @@ meas_end_date <- "2021-04-30"
 field_names <- glue_collapse(
   c(
     "measurementTime",
-    glue("{station_name}:PLS2_Lvl"),
+    glue("{station_name}:PLS2_Lvl_Avg"),
     glue("{station_name}:PLS2_Lvl_QL"),
     glue("{station_name}:PLS2_Lvl_QC")
   ),
@@ -49,9 +49,9 @@ df <- df_raw |>
 ## generic column renaming
 df <- df %>%
   rename_with(~ case_when(
-    str_ends(.x, ":PLS2_Lvl$") ~ "stage",
+    str_ends(.x, ":PLS2_Lvl_Avg$") ~ "stage",
     str_ends(.x, ":PLS2_Lvl_QL$") ~ "qlevel", 
-    str_ends(.x, ":PLs2_Lvl_QC$") ~ "qflag",
+    str_ends(.x, ":PLS2_Lvl_QC$") ~ "qflag",
     TRUE ~ .x
   ))
 
@@ -70,11 +70,11 @@ bad_ranges <- data.table(
   start = ymd_hms(c("2019-02-09 00:05:00", 
                     "2019-02-25 08:15:00",
                     "2019-03-03 02:00:00",
-                    "2020-03-14 12:00:00"), tz = "UTC"),
+                    "2020-03-14 12:00:00")),
   end   = ymd_hms(c("2019-02-09 20:15:00", 
                     "2019-02-28 00:05:00",
                     "2019-03-08 11:00:00",
-                    "2020-03-20 18:00:00"), tz = "UTC")
+                    "2020-03-20 18:00:00"))
 )
 
 # Convert df to data.table
@@ -90,10 +90,6 @@ df_dt
 
 df_dt <- df_dt[265:.N]  #remove all before row 265 which (.N is all rows)
 
-
-# Parameters
-small_gap_max <- 6 * 12  # 6 hours in 5-min intervals (12 readings per hour)
-# adjust if interval is different
 
 # Ensure data is ordered
 setorder(df_dt, measurementTime_PST)
