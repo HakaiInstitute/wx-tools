@@ -15,18 +15,18 @@ create_qc_table_name <- function(table_name) {
 
 qc_author <- 'emily.haughton@hakai.org'
 baseurl <- "https://hecate.hakai.org/api"
-station_name <- "SSN844US"
+station_name <- "SSN703US"
 sampling_interval <- "5minute"
 table_name <- glue("{station_name}:{sampling_interval}")
 qc_table_name <- create_qc_table_name(table_name)
-meas_start_date <- "2023-06-01"
-meas_end_date <- "2023-06-30"
+meas_start_date <- "2021-09-04"
+meas_end_date <- "2024-09-03"
 field_names <- glue_collapse(
   c(
     "measurementTime",
-    glue("{station_name}:PLS_Lvl"),
-    glue("{station_name}:PLS_Lvl_QL"),
-    glue("{station_name}:PLS_Lvl_QC")
+    glue("{station_name}:PLS3_Lvl"),
+    glue("{station_name}:PLS3_Lvl_QL"),
+    glue("{station_name}:PLS4_Lvl_QC")
   ),
   sep = ","
 )
@@ -37,20 +37,20 @@ hakai_client <- hakaiApi::Client$new(baseurl)
 # Step 1: Load the data
 ## construct the url
 url <- glue("{baseurl}/sn/views/{table_name}Samples?measurementTime>={meas_start_date}&measurementTime<{meas_end_date}&fields={field_names}&limit=-1")
-df_raw <- hakai_client$get(url)
+df4_raw <- hakai_client$get(url)
 
 ## set types explicitly
-df <- df_raw |> 
+df4 <- df4_raw |> 
   mutate(across(ends_with("_QC"), as.character)) |> 
   mutate(across(!ends_with("_QC") & !any_of("measurementTime"), as.double)) |> 
   mutate(measurementTime = as_datetime(measurementTime))
 
 ## generic column renaming
-df <- df %>%
+df4 <- df4 %>%
   rename_with(~ case_when(
-    str_ends(.x, ":PLS_Lvl$") ~ "stage",
-    str_ends(.x, ":PLS_Lvl_QL$") ~ "qlevel", 
-    str_ends(.x, ":PLS_Lvl_QC$") ~ "qflag",
+    str_ends(.x, ":PLS4_Lvl$") ~ "stage",
+    str_ends(.x, ":PLS4_Lvl_QL$") ~ "qlevel", 
+    str_ends(.x, ":PLS4_Lvl_QC$") ~ "qflag",
     TRUE ~ .x
   ))
 ##########################################################################################################################################################
