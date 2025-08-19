@@ -97,8 +97,6 @@ setorder(df_dt, measurementTime_PST)
 # identify runs of NAs
 df_dt[, na_run := rleid(is.na(stage))]
 
-df_dt[, qlevel := as.character(qlevel)]
-
 # --- Step 2: Identify consecutive NA runs ---
 df_dt[, na_run := rleid(is.na(stage))]
 
