@@ -11,7 +11,7 @@ library(data.table)
 
 create_qc_table_name <- function(table_name) {
   table_name <- tolower(table_name)
-  gsub("us:", "_", table_name)
+  gsub(":", "_", table_name)
 }
 
 qc_author <- 'emily.haughton@hakai.org'
@@ -146,11 +146,11 @@ df_dt
 #plot and examine
 library(plotly)
 library(ggplot2)
+# Create a simple flag for EV vs original
+df_dt[, is_ev := ifelse(grepl("^EV", qflag), "EV", "Original")]
 
 setDF(df_dt)#convert data table to dataframe
 
-# Create a simple flag for EV vs original
-df_dt[, is_ev := ifelse(grepl("^EV", qflag), "EV", "Original")]
 
 # Base ggplot
 p <- ggplot(df_dt, aes(x = measurementTime_PST, y = stage, color = is_ev, text = qflag)) +
