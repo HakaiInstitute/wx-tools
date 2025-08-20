@@ -192,13 +192,9 @@ str(output_df)
 
 # Send QC data back to the database (1000 rows at a time)
 QCURL = paste0(baseurl, "/sn/qc/", qc_table_name)
-cat('Sending PATCH requests to:', QCURL)
-window_size <- 1000
-for (i in 0:(nrow(output_df) %/% window_size)) {
-  print(i)
-  print(c(i*window_size+1, min(nrow(output_df), (i + 1) * window_size)))
-  lb <- i*window_size+1
-  ub <- min(nrow(output_df), (i + 1) * window_size)
-  hakai_client$patch(QCURL,output_df[lb:ub,])
+cat('Sending PATCH requests to:', QCURL, "\n")
+for (start in seq(1, nrow(output_df), by = window_size)) {
+  end <- min(start + window_size - 1, nrow(output_df))
+  print(c(start, end))
+  hakai_client$patch(QCURL, output_df[start:end,])
 }
-
